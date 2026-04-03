@@ -15,7 +15,8 @@ int main(void) {
   int arg_count;
 
   while (1) {
-    char *filename = NULL;
+    char *stdout_filename = NULL;
+    char *stdin_filename = NULL;
     printf("mysh> ");
     fflush(stdout); // Sends the prompt immediately
 
@@ -65,22 +66,37 @@ int main(void) {
     // > Finder
     for (int i = 0; i < arg_count; i++) {
       if (strcmp(args[i], ">") == 0) {
-        filename = args[i + 1];
+        stdout_filename = args[i + 1];
+        args[i] = NULL;
+      } else if (strcmp(args[i], "<") == 0) {
+        stdin_filename = args[i + 1];
         args[i] = NULL;
       }
     }
 
     pid_t pid = fork(); // Creates a new process
 
+    // stdout
     if (pid == 0) { // child (exec)
-
-      if (filename != NULL) {
-        int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+      if (stdout_filename != NULL) {
+        int fd = open(stdout_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd == -1) {
           perror("open failed");
           exit(1);
         } else {
           dup2(fd, STDOUT_FILENO);
+          close(fd);
+        }
+      }
+
+      // stdin
+      if (stdin_filename != NULL) {
+        int fd = open(stdin_filename, O_RDONLY);
+        if (fd == -1) {
+          perror("open failed");
+          exit(1);
+        } else {
+          dup2(fd, STDIN_FILENO);
           close(fd);
         }
       }
