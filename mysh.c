@@ -17,6 +17,7 @@ int main(void) {
   while (1) {
     char *stdout_filename = NULL;
     char *stdin_filename = NULL;
+    char *consumer = NULL; // Command to the right of |
     printf("mysh> ");
     fflush(stdout); // Sends the prompt immediately
 
@@ -63,60 +64,90 @@ int main(void) {
       break;
     }
 
-    // > Finder
+    // Pipe Finder
     for (int i = 0; i < arg_count; i++) {
-      if (strcmp(args[i], ">") == 0) {
-        stdout_filename = args[i + 1];
-        args[i] = NULL;
-      } else if (strcmp(args[i], "<") == 0) {
-        stdin_filename = args[i + 1];
+      if (strcmp(args[i], "|") == 0) {
+        consumer = args[i + 1];
         args[i] = NULL;
       }
     }
 
-    pid_t pid = fork(); // Creates a new process
+    if (consumer != NULL) {
+      int pipefd[2];
+      if (pipe(pipefd) == -1) {
+        perror("pipefd failed");
+        exit(1);
+      }
+      pid_t left_pid = fork();
+      if (left_pid == 0) {  // child process
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        execvp(args[0], args);
+        perror("execvp failed");
+        exit(1);
+      }
+      pid_t right_pid = fork();
+      if (right_pid == 0) {  // parent process
+        
+      }
 
-    // stdout
-    if (pid == 0) { // child (exec)
-      if (stdout_filename != NULL) {
-        int fd = open(stdout_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd == -1) {
-          perror("open failed");
-          exit(1);
-        } else {
-          dup2(fd, STDOUT_FILENO);
-          close(fd);
+    } else {
+
+      // Redirection Finder
+      for (int i = 0; i < arg_count; i++) {
+        if (strcmp(args[i], ">") == 0) {
+          stdout_filename = args[i + 1];
+          args[i] = NULL;
+        } else if (strcmp(args[i], "<") == 0) {
+          stdin_filename = args[i + 1];
+          args[i] = NULL;
         }
       }
 
-      // stdin
-      if (stdin_filename != NULL) {
-        int fd = open(stdin_filename, O_RDONLY);
-        if (fd == -1) {
-          perror("open failed");
-          exit(1);
-        } else {
-          dup2(fd, STDIN_FILENO);
-          close(fd);
+      pid_t pid = fork(); // Creates a new process
+      if (pid == 0) {     // child (exec)
+        // stdout
+        if (stdout_filename != NULL) {
+          int fd = open(stdout_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+          if (fd == -1) {
+            perror("open failed");
+            exit(1);
+          } else {
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+          }
         }
+
+        // stdin
+        if (stdin_filename != NULL) {
+          int fd = open(stdin_filename, O_RDONLY);
+          if (fd == -1) {
+            perror("open failed");
+            exit(1);
+          } else {
+            dup2(fd, STDIN_FILENO);
+            close(fd);
+          }
+        }
+
+        execvp(args[0], args);
+        perror("execvp failed");
+        exit(1);
+      } else if (pid > 0) { // parent (wait)
+        waitpid(pid, NULL, 0);
+      } else { // negative (error)
+        perror("fork failed");
       }
 
-      execvp(args[0], args);
-      perror("execvp failed");
-      exit(1);
-    } else if (pid > 0) { // parent (wait)
-      waitpid(pid, NULL, 0);
-    } else { // negative (error)
-      perror("fork failed");
+      /*
+        Test:
+        printf("You entered: %s\n", line);
+       for (int i = 0; i < arg_count; i++) {
+         printf("Token %d: %s\n", i, args[i]);
+       }
+       */
     }
-
-    /*
-      Test:
-      printf("You entered: %s\n", line);
-     for (int i = 0; i < arg_count; i++) {
-       printf("Token %d: %s\n", i, args[i]);
-     }
-     */
   }
   return 0;
 }
