@@ -17,7 +17,7 @@ int main(void) {
   while (1) {
     char *stdout_filename = NULL;
     char *stdin_filename = NULL;
-    char *consumer = NULL; // Command to the right of |
+    char **consumer = NULL; // Command to the right of |
     printf("mysh> ");
     fflush(stdout); // Sends the prompt immediately
 
@@ -67,7 +67,7 @@ int main(void) {
     // Pipe Finder
     for (int i = 0; i < arg_count; i++) {
       if (strcmp(args[i], "|") == 0) {
-        consumer = args[i + 1];
+        consumer = &args[i + 1];
         args[i] = NULL;
       }
     }
@@ -79,7 +79,7 @@ int main(void) {
         exit(1);
       }
       pid_t left_pid = fork();
-      if (left_pid == 0) {  // child process
+      if (left_pid == 0) { // First Child Process (Consumer)
         close(pipefd[0]);
         dup2(pipefd[1], STDOUT_FILENO);
         close(pipefd[1]);
@@ -88,8 +88,19 @@ int main(void) {
         exit(1);
       }
       pid_t right_pid = fork();
-      if (right_pid == 0) {  // parent process
-        
+      if (right_pid == 0) { // Second Child Process (Producer)
+        close(pipefd[1]);
+        dup2(pipefd[0], STDIN_FILENO);
+        close(pipefd[0]);
+        execvp(consumer[0], consumer);
+        perror("execvp failed");
+        exit(1);
+      }
+      if (left_pid > 0 && right_pid > 0) { // Parent Process
+        close(pipefd[0]);
+        close(pipefd[1]);
+        waitpid(left_pid, NULL, 0);
+        waitpid(right_pid, NULL, 0);
       }
 
     } else {
