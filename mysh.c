@@ -9,7 +9,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-int main(void) {
+    int
+    main(void) {
   char line[1024];
   char *args[64];
   int arg_count;
@@ -18,6 +19,7 @@ int main(void) {
     char *stdout_filename = NULL;
     char *stdin_filename = NULL;
     char **consumer = NULL; // Command to the right of |
+    int is_background = 0;
     printf("mysh> ");
     fflush(stdout); // Sends the prompt immediately
 
@@ -64,9 +66,18 @@ int main(void) {
       break;
     }
 
+    // & Finder
+    for (int i = 0; i < arg_count; i++) {
+      if (strcmp(args[i], "&") == 0) {
+        args[i] = NULL;
+        is_background = 1;
+        break;
+      }
+    }
+
     // Pipe Finder
     for (int i = 0; i < arg_count; i++) {
-      if (strcmp(args[i], "|") == 0) {
+      if (args[i] != NULL && strcmp(args[i], "|") == 0) {
         consumer = &args[i + 1];
         args[i] = NULL;
       }
@@ -99,18 +110,20 @@ int main(void) {
       if (left_pid > 0 && right_pid > 0) { // Parent Process
         close(pipefd[0]);
         close(pipefd[1]);
-        waitpid(left_pid, NULL, 0);
-        waitpid(right_pid, NULL, 0);
+        if (!is_background) {
+          waitpid(left_pid, NULL, 0);
+          waitpid(right_pid, NULL, 0);
+        }
       }
 
     } else {
 
       // Redirection Finder
       for (int i = 0; i < arg_count; i++) {
-        if (strcmp(args[i], ">") == 0) {
+        if (args[i] != NULL && strcmp(args[i], ">") == 0) {
           stdout_filename = args[i + 1];
           args[i] = NULL;
-        } else if (strcmp(args[i], "<") == 0) {
+        } else if (args[i] != NULL && strcmp(args[i], "<") == 0) {
           stdin_filename = args[i + 1];
           args[i] = NULL;
         }
@@ -146,7 +159,9 @@ int main(void) {
         perror("execvp failed");
         exit(1);
       } else if (pid > 0) { // parent (wait)
-        waitpid(pid, NULL, 0);
+        if (!is_background) {
+          waitpid(pid, NULL, 0);
+        }
       } else { // negative (error)
         perror("fork failed");
       }
